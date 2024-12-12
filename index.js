@@ -3,6 +3,9 @@ const mongoose=require('mongoose')
 const bcrypt=require('bcrypt')
 const jwt=require('jsonwebtoken')
 const secret_key="ghgjhb hbjjv hbjv jh"
+const cors=require('cors')
+const { populate } = require('dotenv')
+
 
  const PORT =3000
  const app=express()
@@ -17,8 +20,7 @@ const secret_key="ghgjhb hbjjv hbjv jh"
         required:true
     },
  })
-
- const listSchema=mongoose.Schema({
+ const taskSchema=mongoose.Schema({
     userId:{
         type:mongoose.Schema.Types.ObjectId,
         ref:'user',
@@ -26,7 +28,17 @@ const secret_key="ghgjhb hbjjv hbjv jh"
     },
     title:{
         type:String,
+        default:""
+    }
+ })
+
+ const listSchema =mongoose.Schema({
+    taskId:{
+        type:mongoose.Schema.Types.ObjectId,
+        ref:'task',
+        required:true
     },
+    
     descriptionList:{
         type:Array,
         default:[]
@@ -35,9 +47,12 @@ const secret_key="ghgjhb hbjjv hbjv jh"
  })
 
  const userModel=mongoose.model('user',userSchema)
-const taskModel=mongoose.model('task',listSchema)
+const taskModel=mongoose.model('task',taskSchema)
+const listModel=mongoose.model('list',listSchema)
+
 app.use(express.json())
 app.use(express.urlencoded())
+app.use(cors())
 app.post('/signup',async(req,res)=>{
   try{
     const{id,password}=req.body;
@@ -63,7 +78,7 @@ app.post('/login',async(req,res)=>{
   if(!match){
     res.status(400).json({message:"password invalid"})
  }
-  const token =jwt.sign({id:user.id},secret_key,{expiresIn:'1h'})
+  const token =jwt.sign({id:user._id},secret_key,{expiresIn:'1h'})
    res.status(200).json({message:"successfully signup",token})
 
   }catch(error){
@@ -92,13 +107,18 @@ const verifyToken=async(req,res,next)=>{
 
 
 
-app.get('/',verifyToken,async(req,res)=>{
+app.get('/getAll',verifyToken,async(req,res)=>{
     try{
-   
-      const userPopulate=await taskModel.find().populate('userId');
+        const listPopulate =await listModel.find().populate({
+            path:'taskId',
+            populate:{
+                path:'userId',
+                model:'user'
+            }
+        })
+     
 
-
-   res.status(200).json({message:" get All",userPopulate})
+   res.status(200).json({message:" get All",listPopulate})
     }catch(error){
         res.status(500).json({message:"error to getAll",error:error.message})
     }
@@ -108,16 +128,117 @@ app.get('/',verifyToken,async(req,res)=>{
 app.post('/create',verifyToken,async(req,res)=>{
     try{
         const id=req.user.id
-        const user=await userModel.findOne({id})
+        const user=await userModel.findOne({_id:id})
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
         const userId=user._id
-       console.log(">>>>>>>user in create ",userId)
+        console.log(">>>>>>>user in create ",userId)
+        const{title,descriptionList}=req.body
+        if (!title || !Array.isArray(descriptionList)) {
+            return res.status(400).json({ message: "Invalid request data" });
+        }
+        const task=await new taskModel({userId,title}).save()
+        const list=await new listModel({descriptionList,taskId: task._id }).save()
+        res.status(200).json({message:" create successfully ", task,
+            list,})
+    }catch(error){
+          res.status(500).json({message:"error to create",error:error.message})
+      }
+})
+
+
+
+app.patch('/add',verifyToken,async(req,res)=>{
+    try{
+        const id=req.user.id
+        console.log("id>>>>>",id)
+        const existingTask=await taskModel.findOne({userId:id})
+        if(!existingTask){
+           return res.status(400).json({message:"not present existing task"})
+        }
+        const existingList=await listModel.findOne({taskId:existingTask._id})
+        console.log("existingList>>>>>>",existingList)
         
         const{title,descriptionList}=req.body
-        const task=await new taskModel({userId,title,descriptionList}).save()
-
+        const updateTask=await taskModel.findByIdAndUpdate(existingTask._id,{title})
+        const updateList=await listModel.findByIdAndUpdate(existingList._id,{descriptionList})
         
+     res.status(200).json({message:" update successfully ",updateTask,updateList})
+      }catch(error){
+          res.status(500).json({message:"error to create",error:error.message})
+      }
+})
+
+app.patch('/dndAdd',verifyToken,async(req,res)=>{
+    try{
+        const id=req.user.id
+       const{dropIds,dragIds}= req.body
+       console.log("dropIds : ",dropIds," dragIds : ",dragIds)
      
-     res.status(200).json({message:" create successfully ",})
+       const existingDropList=await listModel.findOne({_id:dropIds.dropListId})
+        if(!existingDropList){
+           return res.status(400).json({message:"not present existing task"})
+        }
+       
+        const existingDragList=await listModel.findOne({_id:dragIds.listId})
+        console.log("existingDragList>>>>>>",existingDragList)
+        const arrIndex=dragIds.descItem; 
+       const preData=existingDropList.descriptionList
+        const updateDropData=[...preData,existingDragList.descriptionList[arrIndex]] 
+        const updateDropList=await listModel.findByIdAndUpdate(existingDropList._id,{descriptionList:updateDropData})
+          //   { dropListId,dropTaskId} =dropIds ;
+        //   { descItem,listId, taskId}=dragIds ;
+        const preDragData=existingDragList.descriptionList
+        console.log("preDragData : ",preDragData)
+        const updatedDragData=[]
+        for(let i=0;i<preDragData.length;i++){
+            if(i != arrIndex){
+                updatedDragData.push(preDragData[i])
+            }
+        }
+        console.log("updatedDragData",updatedDragData)
+        const updateDragList=await listModel.findByIdAndUpdate(existingDragList._id,{descriptionList:updatedDragData})
+        const listPopulate =await listModel.find().populate({ path:'taskId',
+            populate:{
+                path:'userId',
+                model:'user'
+            }
+        })
+        console.log("success>>>>>")
+        res.status(200).json({message:" update successfully ",listPopulate})
+      }catch(error){
+          res.status(500).json({message:"error to create",error:error.message})
+      }
+})
+app.delete('/deleteTask/:taskId',verifyToken,async(req,res)=>{
+    try{
+        const id=req.user.id
+        const {taskId}=req.params
+        console.log("req.params",req.params)
+        const existingTask=await taskModel.findOne({_id:taskId})
+        const updateTask=await taskModel.findByIdAndDelete(existingTask._id)
+       
+        const existingList=await listModel.findOne({taskId:existingTask._id})
+        const updateList=await listModel.findByIdAndDelete(existingList._id)
+         console.log("successfully delete : updateList ",updateList,"updateTask ",updateTask)
+
+     res.status(200).json({message:" delete successfully ",updateList,updateTask})
+      }catch(error){
+          res.status(500).json({message:"error to create",error:error.message})
+      }
+})
+app.delete('/delete',verifyToken,async(req,res)=>{
+    try{
+        const id=req.user.id
+        console.log("id>>>>>",id)
+        const existingTask=await taskModel.findOne({userId:id})
+        const updateTask=await taskModel.findByIdAndDelete(existingTask._id)
+       
+        const existingList=await listModel.findOne({taskId:existingTask._id})
+        const updateList=await listModel.findByIdAndDelete(existingList._id)
+        
+     res.status(200).json({message:" delete successfully ",updateList,updateTask})
       }catch(error){
           res.status(500).json({message:"error to create",error:error.message})
       }

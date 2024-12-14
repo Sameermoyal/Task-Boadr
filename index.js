@@ -3,12 +3,11 @@ const mongoose=require('mongoose')
 const bcrypt=require('bcrypt')
 const jwt=require('jsonwebtoken')
 const secret_key="ghgjhb hbjjv hbjv jh"
-const cors=require('cors')
-const { populate } = require('dotenv')
-
 
  const PORT =3000
  const app=express()
+ 
+app.use(cors())
  const userSchema =mongoose.Schema({
     id:{
         type:String,
@@ -71,6 +70,9 @@ app.post('/login',async(req,res)=>{
   try{
     const{id,password}=req.body;
     const user =await userModel.findOne({id})
+    if(!user){
+        res.status(400).json({message:"user not register"})
+    }
     console.log('>user>>>>',user)
     const dbPassword=user.password
    const match=await bcrypt.compare(password,dbPassword)
@@ -109,14 +111,9 @@ const verifyToken=async(req,res,next)=>{
 
 app.get('/getAll',verifyToken,async(req,res)=>{
     try{
-        const listPopulate =await listModel.find().populate({
-            path:'taskId',
-            populate:{
-                path:'userId',
-                model:'user'
-            }
-        })
-     
+   
+      const userPopulate=await taskModel.find().populate('userId');
+
 
    res.status(200).json({message:" get All",listPopulate})
     }catch(error){
@@ -128,10 +125,7 @@ app.get('/getAll',verifyToken,async(req,res)=>{
 app.post('/create',verifyToken,async(req,res)=>{
     try{
         const id=req.user.id
-        const user=await userModel.findOne({_id:id})
-        if (!user) {
-            return res.status(404).json({ message: "User not found" });
-        }
+        const user=await userModel.findOne({id})
         const userId=user._id
         console.log(">>>>>>>user in create ",userId)
         const{title,descriptionList}=req.body
@@ -239,6 +233,34 @@ app.delete('/delete',verifyToken,async(req,res)=>{
         const updateList=await listModel.findByIdAndDelete(existingList._id)
         
      res.status(200).json({message:" delete successfully ",updateList,updateTask})
+      }catch(error){
+          res.status(500).json({message:"error to create",error:error.message})
+      }
+})
+app.patch('/add',verifyToken,async(req,res)=>{
+    try{
+        const id=req.user.id
+        console.log("id>>>>>",id)
+        const existingList=await taskModel.findOne({userId:id})
+        console.log("existingList>>>>>>",existingList)
+        
+        const{title,descriptionList}=req.body
+        const updateList=await taskModel.findByIdAndUpdate(existingList._id,{title,descriptionList})
+     res.status(200).json({message:" update successfully ",updateList})
+      }catch(error){
+          res.status(500).json({message:"error to create",error:error.message})
+      }
+})
+app.delete('/delete',verifyToken,async(req,res)=>{
+    try{
+        const id=req.user.id
+        console.log("id>>>>>",id)
+        const existingList=await taskModel.findOne({userId:id})
+        console.log("existingList>>>>>>",existingList)
+        
+      
+        const updateList=await taskModel.findByIdAndDelete(existingList._id)
+     res.status(200).json({message:" delete successfully ",updateList})
       }catch(error){
           res.status(500).json({message:"error to create",error:error.message})
       }

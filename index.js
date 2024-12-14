@@ -3,6 +3,7 @@ const mongoose=require('mongoose')
 const bcrypt=require('bcrypt')
 const jwt=require('jsonwebtoken')
 const secret_key="ghgjhb hbjjv hbjv jh"
+const cors=require('cors')
 
  const PORT =3000
  const app=express()
@@ -111,8 +112,9 @@ const verifyToken=async(req,res,next)=>{
 
 app.get('/getAll',verifyToken,async(req,res)=>{
     try{
-   
-      const userPopulate=await taskModel.find().populate('userId');
+     const userId= req.user.id
+      const userPopulate=await taskModel.find({userId}).populate('userId');
+    //   const userPopulate=await taskModel.find().populate('userId');
 
 
    res.status(200).json({message:" get All",listPopulate})
@@ -125,7 +127,9 @@ app.get('/getAll',verifyToken,async(req,res)=>{
 app.post('/create',verifyToken,async(req,res)=>{
     try{
         const id=req.user.id
-        const user=await userModel.findOne({id})
+        console.log("id>>>>>",id)
+        const user=await userModel.findOne({_id:id})
+        
         const userId=user._id
         console.log(">>>>>>>user in create ",userId)
         const{title,descriptionList}=req.body
@@ -233,6 +237,34 @@ app.delete('/delete',verifyToken,async(req,res)=>{
         const updateList=await listModel.findByIdAndDelete(existingList._id)
         
      res.status(200).json({message:" delete successfully ",updateList,updateTask})
+      }catch(error){
+          res.status(500).json({message:"error to create",error:error.message})
+      }
+})
+app.patch('/add',verifyToken,async(req,res)=>{
+    try{
+        const id=req.user.id
+        console.log("id>>>>>",id)
+        const existingList=await taskModel.findOne({userId:id})
+        console.log("existingList>>>>>>",existingList)
+        
+        const{title,descriptionList}=req.body
+        const updateList=await taskModel.findByIdAndUpdate(existingList._id,{title,descriptionList})
+     res.status(200).json({message:" update successfully ",updateList})
+      }catch(error){
+          res.status(500).json({message:"error to create",error:error.message})
+      }
+})
+app.delete('/delete',verifyToken,async(req,res)=>{
+    try{
+        const id=req.user.id
+        console.log("id>>>>>",id)
+        const existingList=await taskModel.findOne({userId:id})
+        console.log("existingList>>>>>>",existingList)
+        
+      
+        const updateList=await taskModel.findByIdAndDelete(existingList._id)
+     res.status(200).json({message:" delete successfully ",updateList})
       }catch(error){
           res.status(500).json({message:"error to create",error:error.message})
       }
